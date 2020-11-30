@@ -1,6 +1,5 @@
-#define ENCODEROUTPUT 2400
-#define ENCODEROUTPUT2 24
 #include <DualVNH5019MotorShield.h>
+#define ENCODEROUTPUT2 24
 #define tempPin A1
 
 DualVNH5019MotorShield md;
@@ -31,22 +30,16 @@ int ledPin = 12; // debug light
 
 boolean fin;
 
-// latest version 11/12/2020 8:56pm
+// latest version 11/29/2020 9:20pm
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  //  while (!Serial) {
-  //    Serial.println("ERROR: NOT CONNECTED TO SERIAL PORT");
-  //  }
-
-  //  Serial.println("\n\nInstructions: Only input User_Input2 for modes (1) and (3)");
-  //  Serial.println("Mode: Position (1), Velocity (2), Current (3), Current-based Position (4), PWM (5)");
-  //  Serial.println("Command Format: Mode User_Input1 User_Input2");
 
   md.init();
   EncoderInit(); // Initialize module for reading encoder
 
+  pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ledPin, OUTPUT);
   pinMode(tempPin, INPUT);
   analogWrite(ledPin, 0);
@@ -60,9 +53,9 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  digitalWrite(12, LOW);    // turn the LED off by making the voltage LOW
+  digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
   if (Serial.available() > 0) {
-    digitalWrite(12, HIGH);   // turn the LED on (HIGH is the voltage level)
+    digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     int mod = Serial.parseInt();
     userInput1 = Serial.parseFloat();
     userInput2 = Serial.parseFloat();
@@ -88,273 +81,249 @@ void brakeMotor(int num) {
 }
 
 void modeSel(int mod, int userInput1, int userInput2) {
+  long angleCal = 0, newAngle = 0, angleIs = 0;
   switch (mod) {
-    case 1: { // 1. Position Mode
-        long angleCal = 0;
-        if (userInput1 >= 0) {
-          angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) + 28;
-        } else {
-          angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) - 28;
-        }
-        long newAngle = encoderValue + angleCal;
-        double angleIs = 0.00;
-        fin = false;
+    case 1: // 1. Position Mode
+      angleCal = 0;
+      if (userInput1 >= 0) {
+        angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) + 28;
+      } else {
+        angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) - 28;
+      }
+      newAngle = encoderValue + angleCal;
+      angleIs = 0.00;
+      fin = false;
 
-        if (angleCal < 0) {
-          spd = -userInput2;
+      if (angleCal < 0) {
+        spd = -userInput2;
+      }
+      else {
+        spd = userInput2;
+      }
+
+      md.setM1Speed(spd);
+
+      while (fin == false) {
+
+        if (Serial.available()) {
+          int num = Serial.parseInt();
+          brakeMotor(num);
+          fin = true;
+        }
+        angleIs = ((double)encoderValue / 6.666667);
+        Serial.print("SMRPosition ");
+        Serial.print(angleIs);
+        Serial.println(";");
+        if (userInput1 >= 0) {
+          if (encoderValue >= newAngle) {
+            md.setM1Brake(400);
+            delay(100);
+            md.setM1Speed(-100);
+            while (encoderValue >= newAngle) {
+              if (encoderValue <= newAngle) {
+                md.setM1Brake(400);
+                fin = true;
+              }
+            }
+          }
         }
         else {
-          spd = userInput2;
-        }
-
-        md.setM1Speed(spd);
-
-        while (fin == false) {
-          if (Serial.available() && Serial.read() == char(-1)) {
+          if (encoderValue <= newAngle) {
             md.setM1Brake(400);
-            fin = true;
-          }
-          angleIs = ((double)encoderValue / 6.666667);
-          Serial.print("Motor Position = ");
-          Serial.print(angleIs);
-          Serial.println(" Degrees");
-          if (userInput1 >= 0) {
-            if (encoderValue >= newAngle) {
-              md.setM1Brake(400);
-              delay(100);
-              md.setM1Speed(-100);
-              while (encoderValue >= newAngle) {
-                if (encoderValue <= newAngle) {
-                  md.setM1Brake(400);
-                  fin = true;
-                }
-              }
-            }
-          }
-          else {
-            if (encoderValue <= newAngle) {
-              md.setM1Brake(400);
-              delay(100);
-              md.setM1Speed(100);
-              while (encoderValue <= newAngle) {
-                if (encoderValue >= newAngle) {
-                  md.setM1Brake(400);
-                  fin = true;
-                }
+            delay(100);
+            md.setM1Speed(100);
+            while (encoderValue <= newAngle) {
+              if (encoderValue >= newAngle) {
+                md.setM1Brake(400);
+                fin = true;
               }
             }
           }
         }
       }
       break;
-    case 2: { // 2. Velocity Mode
-        trackError = 0;
-        userInput1 = userInput1 * 1.05;
-        spd = lastSpd;
-        fin = false;
+    case 2: // 2. Velocity Mode
+      trackError = 0;
+      userInput1 = userInput1 * 1.075;
+      spd = lastSpd;
+      fin = false;
 
-        md.setM1Speed(spd);
+      md.setM1Speed(spd);
 
-        while (fin == false) {
-          if (Serial.available() > 0 && Serial.read() == char(-1)) {
-            md.setM1Brake(400);
-            break;
-          }
+      while (fin == false) {
+        if (Serial.available()) {
+          int num = Serial.parseInt();
+          brakeMotor(num);
+          fin = true;
+        }
 
-          feedback = get_RPM_10_millis(10);
-          error = userInput1 - feedback;
+        feedback = get_RPM_10_millis(10);
+        error = userInput1 - feedback;
 
-          if ((error < 10) && (error > -10)) {
-            Serial.println("made it to error print 1");
-            if (error > 0) {
-              md.setM1Speed(spd++);
-            }
-            else if (error < 0) {
-              md.setM1Speed(spd--);
-            }
-          } else {
-            Serial.println("made it to error print 2");
-            if (error > 0) {
-              spd += 10;
-              md.setM1Speed(spd);
-            }
-            else if (error < 0) {
-              spd -= 10;
-              md.setM1Speed(spd);
-            }
-          }
-          if (error  == 0) {
-            trackError++;
-          }
-          if (trackError == 20 || spd == 400 || spd == -400) {
-            md.setM1Speed(spd);
-            fin = true;
-          }
-          Serial.print("Feedback RPM: ");
-          Serial.println(feedback);
-
-          Serial.print("User Input: ");
-          Serial.println(userInput1);
-
-          Serial.print("Error (again): ");
-          Serial.println(error);
-
-          Serial.print("Speed (current): ");
-          Serial.println(spd);
-        }//end of while loop
-        lastSpd = spd;
-      }
-      break;
-    case 3: { // 3. Current Mode
-        fin = false;
-        spd = lastSpd;
-        md.setM1Speed(spd);
-
-        while (dir() == 0) {
-          if (userInput1 > 0) {
+        if ((error < 10) && (error > -10)) {
+          if (error > 0) {
             md.setM1Speed(spd++);
-          } else if (userInput1 < 0) {
+          }
+          else if (error < 0) {
             md.setM1Speed(spd--);
           }
-        }
-
-        while (fin == false) {
-          feedback = get_average_current(50);
-          error = userInput1 - feedback;
-
-          if (error > 2) {
-            md.setM1Speed(spd++);
-          } else if (error < -2) {
-            md.setM1Speed(spd--);
-          } else {
-            md.setM1Speed(spd);
-          }
-
-          if ((spd == 400) || (spd == -400)) {
-            md.setM1Speed(spd);
-            if (spd == 400) {
-              spd = 399;
-            }
-            else if (spd == -400) {
-              spd = -399;
-            }
-            lastSpd = spd;
-            fin = true;
-          }
-
-          if (Serial.available() && Serial.read() == 'n') {
-            md.setM1Speed(spd);
-            lastSpd = spd;
-            fin = true;
-          }
-
-          if (Serial.available() > 0 && Serial.read() == char(-1)) {
-            md.setM1Brake(400);
-            fin = true;
-          }
-          Serial.print("Feedback Current(again): ");
-          Serial.println(feedback);
-          Serial.print("Current(again): ");
-          Serial.println(userInput1);
-          Serial.print("Error (again): ");
-          Serial.println(error);
-        }
-        if (userInput1 == 0) {
-          md.setM1Brake(100);
-        }
-      }
-      break;
-    case 4: { // 4. Current-based Position Mode
-        long angleCal = 0;
-        if (userInput1 >= 0) {
-          angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) + 28;
         } else {
-          angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) - 28;
+          if (error > 0) {
+            spd += 10;
+            md.setM1Speed(spd);
+          }
+          else if (error < 0) {
+            spd -= 10;
+            md.setM1Speed(spd);
+          }
         }
-        long newAngle = encoderValue + angleCal;
-        double angleIs = 0.00;
-        fin = false;
+        if ((error >= -0.15) && (error <= 0.15)) {
+          trackError++;
+        }
+        if (trackError == 5 || spd == 400 || spd == -400) {
+          md.setM1Speed(spd);
+          fin = true;
+        }
+      }//end of while loop
+      lastSpd = spd;
+      break;
+    case 3: // 3. Current Mode
+      fin = false;
+      spd = lastSpd;
+      md.setM1Speed(spd);
 
-        if (angleCal < 0) {
-          spd = -userInput2;
+      while (dir() == 0) {
+        if (userInput1 > 0) {
+          md.setM1Speed(spd++);
+        } else if (userInput1 < 0) {
+          md.setM1Speed(spd--);
+        }
+      }
+
+      while (fin == false) {
+        feedback = get_average_current(50);
+        error = userInput1 - feedback;
+
+        if (error > 2) {
+          md.setM1Speed(spd++);
+        } else if (error < -2) {
+          md.setM1Speed(spd--);
+        } else {
+          md.setM1Speed(spd);
+        }
+
+        if ((spd == 400) || (spd == -400)) {
+          md.setM1Speed(spd);
+          if (spd == 400) {
+            spd = 399;
+          }
+          else if (spd == -400) {
+            spd = -399;
+          }
+          lastSpd = spd;
+          fin = true;
+        }
+
+        if (Serial.available()) {
+          int num = Serial.parseInt();
+          brakeMotor(num);
+          fin = true;
+        }
+        //          Serial.print("Feedback Current(again): ");
+        //          Serial.println(feedback);
+        //          Serial.print("Current(again): ");
+        //          Serial.println(userInput1);
+        //          Serial.print("Error (again): ");
+        //          Serial.println(error);
+      }
+      if (userInput1 == 0) {
+        md.setM1Brake(100);
+      }
+      break;
+    case 4: // 4. Current-based Position Mode
+      angleCal = 0;
+      if (userInput1 >= 0) {
+        angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) + 28;
+      } else {
+        angleCal = ((userInput1 * 6) + ((2 * userInput1) / 3)) - 28;
+      }
+      newAngle = encoderValue + angleCal;
+      angleIs = 0.00;
+      fin = false;
+
+      while (dir() == 0) {
+        if (userInput2 > 0) {
+          md.setM1Speed(spd++);
+        } else if (userInput2 < 0) {
+          md.setM1Speed(spd--);
+        }
+      }
+
+      while (fin == false) {
+
+        if (Serial.available()) {
+          int num = Serial.parseInt();
+          brakeMotor(num);
+          fin = true;
+        }
+
+        feedback = get_average_current(50);
+        error = userInput2 - feedback;
+
+        if (error > 2) {
+          md.setM1Speed(spd++);
+        } else if (error < -2) {
+          md.setM1Speed(spd--);
+        } else {
+          md.setM1Speed(spd);
+        }
+
+        if ((spd == 400) || (spd == -400)) {
+          md.setM1Speed(spd);
+          if (spd == 400) {
+            spd = 399;
+          }
+          else if (spd == -400) {
+            spd = -399;
+          }
+        }
+        angleIs = ((double)encoderValue / 6.666667);
+        Serial.print("SMRPosition ");
+        Serial.print(angleIs);
+        Serial.println(";");
+        if (userInput1 >= 0) {
+          if (encoderValue >= newAngle) {
+            md.setM1Brake(400);
+            delay(100);
+            md.setM1Speed(-100);
+            while (encoderValue >= newAngle) {
+              if (encoderValue <= newAngle) {
+                md.setM1Brake(400);
+                spd = 0;
+                fin = true;
+              }
+            }
+          }
         }
         else {
-          spd = userInput2;
-        }
-
-        md.setM1Speed(spd);
-
-        while (dir() == 0) {
-          if (userInput2 > 0) {
-            md.setM1Speed(spd++);
-          } else if (userInput2 < 0) {
-            md.setM1Speed(spd--);
-          }
-        }
-
-        while (fin == false) {
-          if (Serial.available() > 0 && Serial.read() == char(-1)) {
+          if (encoderValue <= newAngle) {
             md.setM1Brake(400);
-            break;
-          }
-
-          feedback = get_average_current(50);
-          error = userInput2 - feedback;
-
-          if (error > 2) {
-            md.setM1Speed(spd++);
-          } else if (error < -2) {
-            md.setM1Speed(spd--);
-          } else {
-            md.setM1Speed(spd);
-          }
-
-          if ((spd == 400) || (spd == -400)) {
-            md.setM1Speed(spd);
-            if (spd == 400) {
-              spd = 399;
-            }
-            else if (spd == -400) {
-              spd = -399;
-            }
-          }
-          angleIs = ((double)encoderValue / 6.666667);
-          //          Serial.print("Motor Position = ");
-          //          Serial.print(angleIs);
-          //          Serial.println(" Degrees");
-          if (userInput1 >= 0) {
-            if (encoderValue >= newAngle) {
-              md.setM1Brake(400);
-              delay(100);
-              md.setM1Speed(-100);
-              while (encoderValue >= newAngle) {
-                if (encoderValue <= newAngle) {
-                  md.setM1Brake(400);
-                  fin = true;
-                }
-              }
-            }
-          }
-          else {
-            if (encoderValue <= newAngle) {
-              md.setM1Brake(400);
-              delay(100);
-              md.setM1Speed(100);
-              while (encoderValue <= newAngle) {
-                if (encoderValue >= newAngle) {
-                  md.setM1Brake(400);
-                  fin = true;
-                }
+            delay(100);
+            md.setM1Speed(100);
+            while (encoderValue <= newAngle) {
+              if (encoderValue >= newAngle) {
+                md.setM1Brake(400);
+                spd = 0;
+                fin = true;
               }
             }
           }
         }
       }
       break;
-    case 5: { // 5. PWM Mode
-        spd = ((double)userInput1 / 100) * 400;
-        md.setM1Speed(spd);
-      }
+    case 5: // 5. PWM Mode
+      spd = ((double)userInput1 / 100) * 400;
+      md.setM1Speed(spd);
       break;
     case 7:
     case 11:
@@ -368,7 +337,7 @@ void modeSel(int mod, int userInput1, int userInput2) {
       Serial.println("Invalid Mode");
       break;
   }
-  digitalWrite(12, LOW);   // turn the LED off (HIGH is the voltage level)
+  digitalWrite(LED_BUILTIN, LOW);   // turn the LED off (HIGH is the voltage level)
 }
 
 void encodeStatusMsg(int num) {
@@ -390,7 +359,7 @@ void encodeStatusMsg(int num) {
       break;
     case 13: // Velocity
       // Calculate velocity
-      vel = (double)get_RPM_10_millis(10) * 1.06;
+      vel = (double)get_RPM_10_millis(10) * 1.03;
       Serial.print("SMVelocity ");
       Serial.print(vel);
       Serial.println(" RPM;");
@@ -444,13 +413,12 @@ float getAvgTemp(int num) {
 }
 
 void statusMsg() {
-  fin = false;
   double temperature = 0;
   double loadVoltage = 0;
   double inputVoltage = 0;
   double loadCurrent = 0;
   double motorPosition = 0;
-  int motorVelocity = 0;
+  double motorVelocity = 0;
 
   // Calculate Temperature (F)
   temperature = getAvgTemp(50);
@@ -468,7 +436,11 @@ void statusMsg() {
   motorPosition = ((double)encoderValue) / 6.6666667; // calculates angle in Degrees based on the encoderValue
 
   //Calculate and print motorVelocity
-  motorVelocity = (double)get_RPM_10_millis(10) * 1.06;
+
+  motorVelocity = get_RPM_10_millis(10) * 1.03;
+  if (motorVelocity < 0) {
+    motorVelocity = -1 * motorVelocity;
+  }
 
   //print temperature
   Serial.print("SMTemperature ");
@@ -559,7 +531,7 @@ int get_average_current(int num) {
   return avg;                                      // return feedback current
 }
 
-int get_RPM_10_millis(int num) {                            //calc average RPM with 10 millisecond time interval inbetween feedback
+double get_RPM_10_millis(int num) {                            //calc average RPM with 10 millisecond time interval inbetween feedback
   rpmValue = 0;
   int num2 = num;
   double sum = 0;
@@ -570,15 +542,13 @@ int get_RPM_10_millis(int num) {                            //calc average RPM w
     if (currentMillis2 - previousMillis2 > interval2) {
       previousMillis2 = currentMillis2;
       sum += (rpmValue * 60 / ENCODEROUTPUT2);
-      Serial.print("Sum is ");
-      Serial.println(sum);
       delay(1);
       rpmValue = 0;
       num--;
     }
   }
   avg = (sum / num2);
-  return (int)avg;
+  return avg;
 }
 
 void EncoderInit()

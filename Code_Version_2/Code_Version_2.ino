@@ -1,5 +1,5 @@
-#define ENCODEROUTPUT2 24
 #include <DualVNH5019MotorShield.h>
+#define ENCODEROUTPUT2 24
 #define tempPin A1
 
 const int HALLSEN_A = 17; // Hall sensor A connected to pin 17 (external interrupt)
@@ -75,7 +75,10 @@ void loop() { // put your main code here, to run repeatedly:
   cmd = {};
   newData = parseCMD();
   if (newData == true) {
-    printCMD();
+    int mod = cmd.mode;
+    if (!(mod == 7 || mod == 11 || mod == 12 || mod == 13 || mod == 14 || mod == 15 || mod == 16 || mod == 29)) {
+      printCMD();
+    }
   }
   setLED_Brightness(cmd.mode);
   brakeMotor(cmd.mode); // if mode is -1
@@ -122,20 +125,18 @@ void loop() { // put your main code here, to run repeatedly:
 
 void velCtrl() {
   trackError = 0;
-  cmd.userInput1 *= 1.05;
+  cmd.userInput1 *= 1.075;
   spd = lastSpd;
   fin = false;
   md.setM1Speed(spd);
   while (fin == false) {
     newData = parseCMD();
-    if (Serial.available() && cmd.mode == -1) {
-      md.setM1Brake(400);
+    if (newData == true && cmd.mode == -1) {
+      brakeMotor(-1);
       break;
     }
     feedback = get_RPM_10_millis(10);
     error = cmd.userInput1 - feedback;
-    Serial.print("Feedback is ");
-    Serial.println(feedback);
 
     if ((error < 10) && (error > -10)) {
       if (error > 0) {
@@ -154,24 +155,13 @@ void velCtrl() {
         md.setM1Speed(spd);
       }
     }
-    if (error == 0) {
+    if ((error >= -0.15) && (error <= 0.15)) {
       trackError++;
     }
     if (trackError == 20 || spd == 400 || spd == -400) {
       md.setM1Speed(spd);
       fin = true;
     }
-    Serial.print("Feedback RPM: ");
-    Serial.println(feedback);
-
-    Serial.print("User Input: ");
-    Serial.println(cmd.userInput1);
-
-    Serial.print("Error (again): ");
-    Serial.println(error);
-
-    Serial.print("Speed (current): ");
-    Serial.println(spd);
   }//end of while loop
   lastSpd = spd;
 }
@@ -191,10 +181,6 @@ void currCtrl() {
   while (fin == false) {
     feedback = get_average_current(50);
     error = cmd.userInput1 - feedback;
-    //    if (cmd.userInput1 == feedback) {
-    //      Serial.println("Current is correct");
-    //      fin = true;
-    //    }
 
     if (error > 2) {
       md.setM1Speed(spd++);
@@ -217,22 +203,17 @@ void currCtrl() {
     }
 
     newData = parseCMD();
-    if (Serial.available() && newData == true) {
-      md.setM1Speed(spd);
-      lastSpd = spd;
-      fin = true;
-    }
 
-    if (Serial.available() && cmd.mode == -1) {
-      md.setM1Brake(400);
-      fin = true;
+    if (newData == true && cmd.mode == -1) {
+      brakeMotor(-1);
+      break;
     }
-    Serial.print("Feedback Current(again): ");
-    Serial.println(feedback);
-    Serial.print("Current(again): ");
-    Serial.println(cmd.userInput1);
-    Serial.print("Error (again): ");
-    Serial.println(error);
+    //    Serial.print("Feedback Current(again): ");
+    //    Serial.println(feedback);
+    //    Serial.print("Current(again): ");
+    //    Serial.println(cmd.userInput1);
+    //    Serial.print("Error (again): ");
+    //    Serial.println(error);
   }
   if (cmd.userInput1 == 0) {
     md.setM1Brake(100);
@@ -246,8 +227,6 @@ void posCtrl() {
   } else {
     angleCal = ((cmd.userInput1 * 6) + ((2 * cmd.userInput1) / 3)) - 28;
   }
-  Serial.print("New angle is ");
-  Serial.println(angleCal);
   long newAngle = encoderValue + angleCal;
   double angleIs = 0.00;
   fin = false;
@@ -258,21 +237,18 @@ void posCtrl() {
   else {
     spd = cmd.userInput2;
   }
-
-  Serial.print("Speed is ");
-  Serial.println(spd);
   md.setM1Speed(spd);
 
   while (fin == false) {
     newData = parseCMD();
-    if (Serial.available() && cmd.mode == -1) {
-      md.setM1Brake(400);
-      fin = true;
+    if (newData == true && cmd.mode == -1) {
+      brakeMotor(-1);
+      break;
     }
     angleIs = ((double)encoderValue / 6.666667);
-    //    Serial.print("SMPosition ");
-    //    Serial.print(angleIs);
-    //    Serial.println(";");
+    Serial.print("SMRPosition ");
+    Serial.print(angleIs);
+    Serial.println(";");
     if (cmd.userInput1 >= 0) {
       if (encoderValue >= newAngle) {
         md.setM1Brake(400);
@@ -309,22 +285,9 @@ void currPosCtrl() {
   } else {
     angleCal = ((cmd.userInput1 * 6) + ((2 * cmd.userInput1) / 3)) - 28;
   }
-  Serial.print("New angle is ");
-  Serial.println(angleCal);
   long newAngle = encoderValue + angleCal;
   double angleIs = 0.00;
   fin = false;
-
-  if (angleCal < 0) {
-    spd = -cmd.userInput2;
-  }
-  else {
-    spd = cmd.userInput2;
-  }
-
-  Serial.print("Speed is ");
-  Serial.println(spd);
-  md.setM1Speed(spd);
 
   while (dir() == 0) {
     if (cmd.userInput2 > 0) {
@@ -335,8 +298,8 @@ void currPosCtrl() {
   }
   while (fin == false) {
     newData = parseCMD();
-    if (Serial.available() > 0 && cmd.mode == -1) {
-      md.setM1Brake(400);
+    if (newData == true && cmd.mode == -1) {
+      brakeMotor(-1);
       break;
     }
     feedback = get_average_current(50);
@@ -358,7 +321,10 @@ void currPosCtrl() {
         spd = -399;
       }
     }
-    //        angleIs = ((double)encoderValue / 6.666667);
+    angleIs = ((double)encoderValue / 6.666667);
+    Serial.print("SMRPosition ");
+    Serial.print(angleIs);
+    Serial.println(";");
     if (cmd.userInput1 >= 0) {
       if (encoderValue >= newAngle) {
         md.setM1Brake(400);
@@ -367,30 +333,21 @@ void currPosCtrl() {
         while (encoderValue >= newAngle) {
           if (encoderValue <= newAngle) {
             md.setM1Brake(400);
+            spd = 0;
             fin = true;
           }
         }
       }
     }
     else {
-      Serial.println("User Angle is negative!");
       if (encoderValue <= newAngle) {
-        //        angleIs = ((double)encoderValue / 6.666667);
-        //        diff = (newAngle - angleIs);
-        //        Serial.print("Angle is ");
-        //        Serial.print(diff);
-        //        Serial.println(" Degrees off");
         md.setM1Brake(400);
         delay(100);
         md.setM1Speed(100);
         while (encoderValue <= newAngle) {
-          //          angleIs = ((double)encoderValue / 6.666667);
-          //          diff = (newAngle - angleIs);
-          //          Serial.print("Angle is ");
-          //          Serial.print(diff);
-          //          Serial.println(" Degrees off");
           if (encoderValue >= newAngle) {
             md.setM1Brake(400);
+            spd = 0;
             fin = true;
           }
         }
@@ -454,6 +411,7 @@ void tok() {
   double speedd = 0.00;
   strtokIndx = strtok(receivedChars, " ");     // get the first value
   cmd.mode = atoi(strtokIndx);
+  int mod = cmd.mode;
 
   strtokIndx = strtok(NULL, " ");
   cmd.userInput1 = atof(strtokIndx);     // convert this part to a long or double
@@ -473,6 +431,9 @@ void tok() {
   }
   else {
     cmd.userInput2 = speedd;
+  }
+  if ((mod == 2) || (mod == 3) || (mod == 5)) {
+    cmd.userInput2 = 0;
   }
 }
 
@@ -531,7 +492,7 @@ void encodeStatusMsg(int num) {
       break;
     case 13: // Velocity
       // Calculate velocity
-      cmd.vel = (double)get_RPM_10_millis(10) * 1.06;
+      cmd.vel = (double)get_RPM_10_millis(10) * 1.03;
       Serial.print("SMVelocity ");
       Serial.print(cmd.vel);
       Serial.println(" RPM;");
@@ -620,8 +581,6 @@ int get_RPM_10_millis(int num) {                            //calc average RPM w
     if (currentMillis2 - previousMillis2 > interval2) {
       previousMillis2 = currentMillis2;
       sum += (rpmValue * 60 / ENCODEROUTPUT2);
-      //      Serial.print("Sum is ");
-      //      Serial.println(sum);
       delay(1);
       rpmValue = 0;
       num--;
