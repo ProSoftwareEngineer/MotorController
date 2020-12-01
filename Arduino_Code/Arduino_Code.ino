@@ -260,6 +260,13 @@ void currCtrl() {
       encodeStatusMsg(cmd.mode);
       resetArduino(cmd.mode);
     }
+
+    if(newData == true && (cmd.mode == 1 || cmd.mode == 2 || cmd.mode == 4 || cmd.mode == 5)){
+      md.setM1Speed(spd);
+      lastSpd = spd;
+      ControlMode(cmd.mode);
+      fin = true;
+    }
     
   }
   if (cmd.userInput1 >= -0.1 && cmd.userInput1 <= 0.1) {
