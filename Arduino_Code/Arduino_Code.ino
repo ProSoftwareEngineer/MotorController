@@ -25,8 +25,8 @@ boolean fin;
 //int velLED = 10; // velocity light (GREEN)
 //int curLED = 11; // current light (BLUE)
 int ledPin = 12; // debug light
-const byte numChars = 12; char receivedChars[numChars]; // an array to store the received data
-boolean newData, Stopped;
+const byte numChars = 24; char receivedChars[numChars]; // an array to store the received data
+boolean newData;
 
 // Command struct
 typedef struct {
